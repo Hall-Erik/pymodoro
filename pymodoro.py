@@ -13,11 +13,13 @@ Typical pomodoro workflow:
 from datetime import datetime, timedelta
 from sense_hat import SenseHat
 import time
+import thread
+import os
 
 sense = SenseHat()
 
 # Times in minutes
-work = 5
+work = 25
 short_break = 5
 long_break = 30
 
@@ -25,54 +27,85 @@ long_break = 30
 white = [255]*3
 red = [255] + [0]*2
 green = [0,255,0]
+light_green = [0,127,0]
+light_red = [127] + [0]*2
 
 # Marking colors
 check = white
 work_tick = green
 break_tick = red
+work_face = light_green
+break_face = light_red
 
+# Draw a check for each iteration completed.
 def draw_checks(num):
     if num >= 1: sense.set_pixel(0,0,check)
     if num >= 2: sense.set_pixel(7,0,check)
     if num >= 3: sense.set_pixel(0,7,check)
     if num == 4: sense.set_pixel(7,7,check)
 
+# Draw tick marks that go around the clock.
 def draw_clock(pct, color):
-    if pct >= 1/12.0: sense.set_pixel(4,2,color)
-    if pct >= 2/12.0: sense.set_pixel(5,2,color)
-    if pct >= 3/12.0: sense.set_pixel(5,3,color)
-    if pct >= 4/12.0: sense.set_pixel(5,4,color)
-    if pct >= 5/12.0: sense.set_pixel(5,5,color)
-    if pct >= 6/12.0: sense.set_pixel(4,5,color)
-    if pct >= 7/12.0: sense.set_pixel(3,5,color)
-    if pct >= 8/12.0: sense.set_pixel(2,5,color)
-    if pct >= 9/12.0: sense.set_pixel(2,4,color)
-    if pct >= 10/12.0: sense.set_pixel(2,3,color)
-    if pct >= 11/12.0: sense.set_pixel(2,2,color)
-    if pct >= 12/12.0: sense.set_pixel(3,2,color)
+    if pct >= 0: sense.set_pixel(4,2,color)
+    if pct >= 1/12.0: sense.set_pixel(5,2,color)
+    if pct >= 2/12.0: sense.set_pixel(5,3,color)
+    if pct >= 3/12.0: sense.set_pixel(5,4,color)
+    if pct >= 4/12.0: sense.set_pixel(5,5,color)
+    if pct >= 5/12.0: sense.set_pixel(4,5,color)
+    if pct >= 6/12.0: sense.set_pixel(3,5,color)
+    if pct >= 7/12.0: sense.set_pixel(2,5,color)
+    if pct >= 8/12.0: sense.set_pixel(2,4,color)
+    if pct >= 9/12.0: sense.set_pixel(2,3,color)
+    if pct >= 10/12.0: sense.set_pixel(2,2,color)
+    if pct >= 11/12.0: sense.set_pixel(3,2,color)
 
-# TODO use joystick to quit
+def draw_clock_face(color):
+    sense.set_pixel(3,3,color)
+    sense.set_pixel(3,4,color)
+    sense.set_pixel(4,3,color)
+    sense.set_pixel(4,4,color)
+
+# Runs the timer while updating ticks on the sensehat
+def run_timer(duration, tick_color):
+    start_time = datetime.now()
+    while (datetime.now() - start_time) < timedelta(minutes=duration):
+        minutes = (datetime.now() - start_time).seconds/60.0
+        draw_clock(minutes/duration, tick_color)
+        time.sleep(0.5) # no need to blast through this loop more than this.
+
+# Exit on joystick action.
+# Clears the screen, unless show_message is running
+def joystick_listener():
+    event = sense.stick.wait_for_event()
+    sense.clear()
+    os._exit(1)
+
+try:
+    thread.start_new_thread(joystick_listener, ())
+except:
+    print("Couldn't start thread.")
+sense.low_light = True # normal mode is too bright for me.
+sense.set_rotation(180) # the Pi is upside-down in my use case.
+
 while True:
     sense.clear()
     checks = 0
     while checks < 4:
-        sense.show_message(text_string="Work!")
-        start_time = datetime.now()
-        while (datetime.now() - start_time) < timedelta(minutes=work):
-            # wait 25 mins updating clock
-            minutes = (datetime.now() - start_time).seconds/60.0
-            print(minutes)
-            draw_clock(minutes/work, work_tick)
-            time.sleep(0.5)
-
-        sense.show_message(text_string="Stop working!")
-        checks = checks + 1
+        sense.show_message(text_string="Work!", scroll_speed=0.05)
         draw_checks(checks)
+        draw_clock_face(work_face)
+        run_timer(work, work_tick)
+        sense.show_message(text_string="Stop working!", scroll_speed=0.05)
+        checks = checks + 1
         if checks == 4:
-            sense.show_message(text_string="Take a long break.")
-            # wait 30 mins updating clock
+            sense.show_message(text_string="Take a long break.", scroll_speed=0.05)
+            draw_checks(checks)
+            draw_clock_face(break_face)
+            run_timer(long_break, break_tick)
         else:
-            sense.show_message(text_string="Take a short break.")
-            # wait 5 mins updating clock
+            sense.show_message(text_string="Take a short break.", scroll_speed=0.05)
+            draw_checks(checks)
+            draw_clock_face(break_face)
+            run_timer(short_break, break_tick)
         # End while checks < 4
     # End while True
